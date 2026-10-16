@@ -12,7 +12,7 @@ fs.mkdirSync(saida, { recursive: true });
 const agora = Date.now();
 const f = montar(agora);
 const amb = criarAmbiente({ planilhas: { [ID_LEADS]: f.leads, '1bMl3twqjR-IWyGHFQQf0oHz1en8McFUgmjIyNs10sEc': f.leads, PLANILHA_APP_TESTE: f.app }, appSs: f.app });
-amb.estado.usuario = 'provecta@exemplo.com';
+amb.estado.usuario = 'gabrielgoto2@gmail.com';
 amb.chamar('instalar');
 const cfg = f.app.getSheetByName('Config').values;
 cfg[1][1] = ID_LEADS; cfg[3][1] = new Date(agora - 48 * H); cfg[8][1] = 'sandro@exemplo.com'; cfg[9][1] = 'luana@exemplo.com';

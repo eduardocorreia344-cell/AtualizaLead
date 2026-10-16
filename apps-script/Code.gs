@@ -17,6 +17,7 @@ const ABA_REGISTROS = 'Registros';
 const CABECALHO_REGISTROS = ['data_hora', 'lead_id', 'autor', 'campo', 'de', 'para'];
 
 const PLANILHA_LEADS_PADRAO = '1bMl3twqjR-IWyGHFQQf0oHz1en8McFUgmjIyNs10sEc';
+const EMAIL_GESTOR_PADRAO = 'gabrielgoto2@gmail.com';
 const FUSO = 'America/Bahia';
 const MAX_EMAILS_INDIVIDUAIS = 5;
 
@@ -112,7 +113,8 @@ function verificarNovosLeads() {
   if (!lock.tryLock(1000)) return;
   try {
     const cfg = lerConfig_();
-    if (!cfg.avisarEmail || !cfg.usuarios.length || !cfg.inicio) return;
+    const corretores = cfg.usuarios.filter(u => u.papel === 'corretor');
+    if (!cfg.avisarEmail || !corretores.length || !cfg.inicio) return;
     const est = montarEstado_(cfg);
     const avisados = {};
     est.eventos.forEach(ev => { if (ev.campo === 'aviso') avisados[ev.leadId] = true; });
@@ -141,7 +143,7 @@ function verificarNovosLeads() {
       };
     });
 
-    const para = cfg.usuarios.map(u => u.email).join(',');
+    const para = corretores.map(u => u.email).join(',');
     if (itens.length > MAX_EMAILS_INDIVIDUAIS) {
       MailApp.sendEmail({ to: para, name: 'Villa Verde · Leads', subject: itens.length + ' leads novos', htmlBody: emailHtml_(itens, url) });
     } else {
@@ -184,7 +186,7 @@ function emailHtml_(itens, url) {
 /* ============================== Instalação ============================== */
 
 /**
- * Rode UMA vez pelo editor do Apps Script (botão Executar), logado na conta Provecta VGV.
+ * Rode UMA vez pelo editor do Apps Script (botão Executar), logado na conta do gestor (gabrielgoto2@gmail.com).
  * Cria as abas Config e Registros, testa o acesso à planilha de leads e liga o aviso por e-mail.
  * Pode rodar de novo sem perder nada.
  */
@@ -221,7 +223,7 @@ function instalar() {
   ScriptApp.newTrigger('verificarNovosLeads').timeBased().everyMinutes(5).create();
 
   const resumo = 'Instalado. Leads encontrados por aba: ' + JSON.stringify(porAba) +
-    '. Usuários com acesso: ' + (cfg.usuarios.map(u => u.nome + ' <' + u.email + '>').join(', ') || 'NENHUM — preencha os e-mails na aba Config');
+    '. Usuários com acesso: ' + (cfg.usuarios.map(u => u.nome + ' <' + u.email + '> (' + u.papel + ')').join(', ') || 'NENHUM — preencha os e-mails na aba Config');
   Logger.log(resumo);
   return resumo;
 }
@@ -233,12 +235,13 @@ function criarConfig_(ss) {
     ['ID da planilha de leads', PLANILHA_LEADS_PADRAO, 'Planilha que recebe os leads da Meta. O app só LÊ essa planilha, todas as abas.'],
     ['Horas até ficar vermelho', 2, 'Lead em "Novo" há mais tempo que isso aparece em vermelho.'],
     ['Início do sistema', new Date(), 'Leads anteriores a esta data não contam no tempo de resposta nem geram e-mail.'],
-    ['Avisar por e-mail', 'SIM', 'SIM = e-mail para os corretores a cada lead novo. NÃO = desliga.'],
+    ['Avisar por e-mail', 'SIM', 'SIM = e-mail para os corretores a cada lead novo (o gestor não recebe). NÃO = desliga.'],
     ['Link do app', '', 'Cole aqui o link do app depois de publicar. Ele vai no botão dos e-mails.'],
-    ['', '', ''],
-    ['Nome', 'E-mail Google', 'Quem pode abrir o app. Uma pessoa por linha. Quem não estiver aqui não entra.'],
-    ['Sandro', '', ''],
-    ['Luana', '', ''],
+    ['Quem pode abrir o app (uma pessoa por linha; quem não estiver aqui não entra)', '', ''],
+    ['Nome', 'E-mail Google', 'Papel: Corretor (recebe e-mail de lead novo e aparece no painel) ou Gestor (só acompanha)'],
+    ['Sandro', '', 'Corretor'],
+    ['Luana', '', 'Corretor'],
+    ['Gestor', EMAIL_GESTOR_PADRAO, 'Gestor'],
   ];
   aba.getRange(1, 1, linhas.length, 3).setValues(linhas);
   aba.getRange('A1:C1').setFontWeight('bold');
@@ -275,7 +278,8 @@ function lerConfig_() {
     const valor = l[1];
     if (lendoUsuarios) {
       const email = String(valor || '').trim().toLowerCase();
-      if (chave && email.indexOf('@') > 0) cfg.usuarios.push({ nome: String(l[0]).trim(), email: email });
+      const papel = /^gest/i.test(String(l[2]).trim()) ? 'gestor' : 'corretor';
+      if (chave && email.indexOf('@') > 0) cfg.usuarios.push({ nome: String(l[0]).trim(), email: email, papel: papel });
       return;
     }
     if (chave === 'nome') lendoUsuarios = true;
@@ -527,7 +531,7 @@ function calcularPainel_(est, cfg, filtro) {
   });
 
   const seteDias = agora - 7 * 864e5;
-  const corretores = cfg.usuarios.map(u => {
+  const corretores = cfg.usuarios.filter(u => u.papel === 'corretor').map(u => {
     const tempos = contatos.filter(c => c.resposta && c.resposta.autor === u.email && c.tempoResposta !== null).map(c => c.tempoResposta);
     const avaliou = contatos.filter(c => c.qualificadoPor === u.email && c.qualificado !== QUALIFICADO_PADRAO);
     return {

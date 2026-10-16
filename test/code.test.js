@@ -5,7 +5,7 @@ const igual = (a, b, m) => assert.deepStrictEqual(JSON.parse(JSON.stringify(a)),
 const { criarAmbiente } = require('./mocks');
 const { montar, ID_LEADS, H } = require('./fixtures');
 
-const DONO = 'provecta@exemplo.com';
+const DONO = 'gabrielgoto2@gmail.com';
 const SANDRO = 'sandro@exemplo.com';
 const LUANA = 'luana@exemplo.com';
 
@@ -112,7 +112,8 @@ test('salvar grava histórico e muda estado, tempo de resposta e painel', () => 
   assert.strictEqual(ana.qualificado, 'Sim');
   assert.strictEqual(ana.ultima.por, 'Luana');
 
-  const p = como(LUANA, 'painel', { dias: 30 });
+  const p = como(DONO, 'painel', { dias: 30 }); // gestor abre o painel
+  igual(p.corretores.map(c => c.nome), ['Sandro', 'Luana'], 'gestor fora da comparação');
   const sandro = p.corretores.find(c => c.nome === 'Sandro');
   const luana = p.corretores.find(c => c.nome === 'Luana');
   assert.strictEqual(sandro.respostas, 1);
@@ -159,7 +160,7 @@ test('aviso por e-mail: só leads depois do início, uma vez só, só pelo dono'
   // depois do início (2 dias): Ana, Bruno(Nest), Carla, Bruno(Cedro), Fábio, Gabi = 6 > 5 → 1 e-mail-resumo
   assert.strictEqual(amb.estado.emails.length, 1);
   assert.match(amb.estado.emails[0].subject, /6 leads novos/);
-  assert.strictEqual(amb.estado.emails[0].to, SANDRO + ',' + LUANA);
+  assert.strictEqual(amb.estado.emails[0].to, SANDRO + ',' + LUANA, 'gestor não recebe aviso');
   assert.ok(!/Davi|Eva|@exemplo|9922/.test(amb.estado.emails[0].htmlBody), 'sem leads antigos nem dados de contato no e-mail');
   assert.match(amb.estado.emails[0].htmlBody, /Já entrou antes/);
   assert.match(amb.estado.emails[0].htmlBody, /\?lead=l%3A/);

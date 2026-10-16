@@ -7,6 +7,7 @@ App de celular para os corretores (Sandro e Luana) atualizarem os leads da Meta 
 - O corretor registra só **Qualificado** (Sim / Não / Ainda não sei) e **Situação** (8 opções).
 - O sistema calcula sozinho o tempo de resposta, os duplicados (por telefone e por lead_id) e o painel do gestor.
 - Um e-mail avisa os dois corretores a cada lead novo, com um botão que abre o lead direto.
+- O gestor (gabrielgoto2@gmail.com) instala, é dono do app e acompanha pelo painel.
 
 ```
 apps-script/Code.gs          servidor (Apps Script)
@@ -19,9 +20,7 @@ test/                        testes locais com dados falsos (node --test test/co
 
 ## Instalação (uma vez, cerca de 15 minutos)
 
-Faça tudo **logado na conta Provecta VGV**.
-
-**0. Antes de tudo:** abra a "Planilha Villa Verde Oficial" com a conta Provecta VGV. Se não abrir, peça ao dono da planilha para compartilhar com essa conta como **Leitor**.
+Faça tudo **logado na conta do gestor, gabrielgoto2@gmail.com**. Essa conta já é dona da "Planilha Villa Verde Oficial", então o app já consegue ler os leads.
 
 1. Crie uma planilha nova (digite `sheets.new` no navegador) e dê o nome **Villa Verde – Atendimento (app)**.
 2. Nessa planilha, abra o menu **Extensões → Apps Script**.
@@ -29,10 +28,18 @@ Faça tudo **logado na conta Provecta VGV**.
 4. Clique no **+** ao lado de "Arquivos", escolha **HTML** e dê o nome `Index`, sem o ".html". Apague o que vier dentro, cole o conteúdo de `apps-script/Index.html` e salve.
 5. Na engrenagem **⚙ Configurações do projeto**, marque **"Mostrar arquivo de manifesto appsscript.json no editor"**. Volte ao editor (ícone `< >`), abra `appsscript.json`, apague tudo, cole o conteúdo de `apps-script/appsscript.json` e salve.
 6. No topo do editor, escolha a função **`instalar`** e clique em **Executar**.
-   - Vai aparecer **Revisar permissões**. Escolha a conta Provecta VGV.
+   - Vai aparecer **Revisar permissões**. Escolha gabrielgoto2@gmail.com.
    - Na tela "O Google não verificou este app", clique em **Avançado → Acessar … (não seguro) → Permitir**. O aviso é normal: o app é de vocês e não foi publicado na loja do Google.
    - No registro de execução deve aparecer `Instalado. Leads encontrados por aba: {...}`.
-7. Volte à planilha. Agora existem as abas **Config** e **Registros**. Na **Config**, preencha o e-mail Google do Sandro e da Luana (coluna B, linhas "Sandro" e "Luana").
+7. Volte à planilha. Agora existem as abas **Config** e **Registros**. No fim da **Config** está a lista de quem pode abrir o app:
+
+   | Nome | E-mail Google | Papel |
+   |---|---|---|
+   | Sandro | *preencher* | Corretor |
+   | Luana | *preencher* | Corretor |
+   | Gestor | gabrielgoto2@gmail.com (já vem preenchido) | Gestor |
+
+   Preencha o e-mail Google do Sandro e da Luana. O **Corretor** recebe o e-mail de lead novo e aparece na comparação do painel. O **Gestor** vê a lista e o painel, mas não recebe os e-mails de lead novo.
 8. No Apps Script, clique em **Implantar → Nova implantação**:
    - na engrenagem ao lado de "Selecione o tipo", escolha **App da Web**;
    - em "Executar como", escolha **Usuário que acessa o app da Web**;
@@ -43,6 +50,8 @@ Faça tudo **logado na conta Provecta VGV**.
     - **Villa Verde – Atendimento (app)** → Sandro e Luana como **Editor**. O app grava em nome deles, por isso precisam poder editar.
     - **Planilha Villa Verde Oficial** → Sandro e Luana como **Leitor**.
 11. Mande o link e o guia abaixo para os corretores. No primeiro acesso, cada um passa pela mesma tela de "app não verificado" do passo 6, uma única vez.
+
+> Os e-mails de lead novo saem da conta gabrielgoto2@gmail.com, que é a dona do gatilho automático.
 
 > **Por que "Qualquer pessoa com Conta do Google" não deixa o app público:** o app roda com o login de quem abre. Quem não recebeu as planilhas não consegue ler nada. Além disso, quem não está na lista da aba Config cai numa tela de "Acesso restrito". O link nunca abre sem login e não é indexado.
 
