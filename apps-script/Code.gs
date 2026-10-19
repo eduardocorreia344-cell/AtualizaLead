@@ -5,6 +5,8 @@
  * - Cada toque do corretor vira uma linha nova na aba "Registros" desta planilha
  *   (data/hora, lead_id, autor, campo, de, para). Nada é apagado nem sobrescrito.
  * - Situação atual, tempo de resposta e duplicados são calculados a partir desse histórico.
+ * - Notas dos corretores ficam na aba "Notas" (nota_id, data/hora, lead_id, autor, texto).
+ *   São contexto para o corretor: não entram no painel nem nos CSVs sem dados pessoais.
  */
 
 const SITUACOES = ['Novo', 'Em contato', 'Sem resposta', 'Visita agendada', 'Visita realizada', 'Proposta', 'Venda', 'Perdido'];
@@ -15,6 +17,10 @@ const QUALIFICADO_PADRAO = 'Ainda não sei';
 const ABA_CONFIG = 'Config';
 const ABA_REGISTROS = 'Registros';
 const CABECALHO_REGISTROS = ['data_hora', 'lead_id', 'autor', 'campo', 'de', 'para'];
+const ABA_NOTAS = 'Notas';
+const CABECALHO_NOTAS = ['nota_id', 'data_hora', 'lead_id', 'autor', 'texto'];
+const MAX_NOTA = 500;
+const MINUTOS_EDITAR_NOTA = 10;
 
 const PLANILHA_LEADS_PADRAO = '1bMl3twqjR-IWyGHFQQf0oHz1en8McFUgmjIyNs10sEc';
 const EMAIL_GESTOR_PADRAO = 'gabrielgoto2@gmail.com';
@@ -71,7 +77,9 @@ function carregar() {
     situacoes: SITUACOES,
     qualificacoes: QUALIFICACOES,
     empreendimentos: empreendimentos_(est.leads),
-    contatos: est.contatos.map(c => paraCliente_(c, nomes)),
+    minutosEditarNota: MINUTOS_EDITAR_NOTA,
+    maxNota: MAX_NOTA,
+    contatos: est.contatos.map(c => paraCliente_(c, nomes, usuario.email)),
   };
 }
 
@@ -94,6 +102,72 @@ function salvar(leadId, campo, valor, anterior) {
     lock.releaseLock();
   }
   return { t: agora.getTime(), por: usuario.nome };
+}
+
+/**
+ * Nota do corretor. Vai para a aba Notas, nunca para Registros: não conta no painel.
+ * Cada nota é uma linha nova; nada é sobrescrito.
+ */
+function salvarNota(leadId, texto) {
+  const cfg = lerConfig_();
+  const usuario = exigirUsuario_(cfg);
+  leadId = String(leadId || '');
+  if (!/^[\w:.-]{3,64}$/.test(leadId)) throw new Error('Lead inválido.');
+  texto = limparNota_(texto);
+
+  const agora = new Date();
+  const id = 'n:' + agora.getTime().toString(36) + Math.random().toString(36).slice(2, 8);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    abaNotas_(true).appendRow([id, agora, leadId, usuario.email, textoParaPlanilha_(texto)]);
+  } finally {
+    lock.releaseLock();
+  }
+  return { id: id, t: agora.getTime(), editadaEm: null, por: usuario.nome, texto: texto, minha: true };
+}
+
+/**
+ * Corrige a própria nota até MINUTOS_EDITAR_NOTA depois de criada.
+ * A correção vira uma linha nova com o mesmo nota_id; a versão antiga continua na aba.
+ */
+function editarNota(notaId, texto) {
+  const cfg = lerConfig_();
+  const usuario = exigirUsuario_(cfg);
+  notaId = String(notaId || '');
+  if (!/^n:[a-z0-9]{4,40}$/.test(notaId)) throw new Error('Nota inválida.');
+  texto = limparNota_(texto);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const nota = lerNotas_().filter(n => n.id === notaId)[0];
+    if (!nota) throw new Error('Nota não encontrada.');
+    if (nota.autor !== usuario.email) throw new Error('Só quem escreveu pode editar esta nota.');
+    const agora = new Date();
+    if (agora.getTime() - nota.t > MINUTOS_EDITAR_NOTA * 60000) {
+      throw new Error('Passou o prazo de ' + MINUTOS_EDITAR_NOTA + ' minutos para editar. Salve uma nota nova.');
+    }
+    if (texto !== nota.texto) {
+      abaNotas_(true).appendRow([notaId, agora, nota.leadId, usuario.email, textoParaPlanilha_(texto)]);
+      nota.editadaEm = agora.getTime();
+    }
+    return { id: notaId, t: nota.t, editadaEm: nota.editadaEm, por: usuario.nome, texto: texto, minha: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function limparNota_(texto) {
+  const s = String(texto == null ? '' : texto).replace(/\r\n?/g, '\n').trim();
+  if (!s) throw new Error('A nota está vazia.');
+  if (s.length > MAX_NOTA) throw new Error('A nota passou de ' + MAX_NOTA + ' caracteres.');
+  return s;
+}
+
+/** Texto que começa com = + - @ viraria fórmula na planilha. O apóstrofo força texto. */
+function textoParaPlanilha_(s) {
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
 }
 
 /** Números do painel do gestor. filtro: { dias: number|0, emp: string } */
@@ -387,6 +461,42 @@ function lerRegistros_() {
   return eventos.sort((a, b) => a.t - b.t);
 }
 
+/**
+ * Notas já com a versão mais recente de cada nota_id.
+ * t = quando foi criada; editadaEm = última correção. Só vale correção do próprio autor.
+ */
+function lerNotas_() {
+  const aba = abaNotas_(false);
+  if (!aba) return [];
+  const v = aba.getDataRange().getValues();
+  const linhas = [];
+  for (let r = 1; r < v.length; r++) {
+    const id = String(v[r][0]).trim();
+    if (!id) continue;
+    linhas.push({
+      id: id,
+      t: paraData_(v[r][1]) || 0,
+      leadId: String(v[r][2]).trim(),
+      autor: String(v[r][3]).trim().toLowerCase(),
+      texto: String(v[r][4] == null ? '' : v[r][4]).replace(/^'(?=[=+\-@])/, ''),
+    });
+  }
+  linhas.sort((a, b) => a.t - b.t);
+  const porId = {};
+  const notas = [];
+  linhas.forEach(l => {
+    const n = porId[l.id];
+    if (!n) {
+      porId[l.id] = { id: l.id, t: l.t, leadId: l.leadId, autor: l.autor, texto: l.texto, editadaEm: null };
+      notas.push(porId[l.id]);
+    } else if (l.autor === n.autor) {
+      n.texto = l.texto;
+      n.editadaEm = l.t;
+    }
+  });
+  return notas;
+}
+
 
 /* ===================== Estado: contatos, duplicados, tempos ===================== */
 
@@ -396,14 +506,17 @@ function montarEstado_(cfg) {
   if (memoEstado_) return memoEstado_;
   const leads = lerLeads_(cfg);
   const eventos = lerRegistros_();
+  const notas = lerNotas_();
   const contatos = agruparContatos_(leads);
   const contatoPorLead = {};
-  contatos.forEach(c => { c.eventos = []; c.entradas.forEach(en => { contatoPorLead[en.id] = c; }); });
+  contatos.forEach(c => { c.eventos = []; c.notas = []; c.entradas.forEach(en => { contatoPorLead[en.id] = c; }); });
   eventos.forEach(ev => {
     const c = contatoPorLead[ev.leadId];
     if (c && (ev.campo === 'situacao' || ev.campo === 'qualificado')) c.eventos.push(ev);
   });
-  contatos.forEach(c => resolverContato_(c, cfg));
+  // Notas de todas as entradas do mesmo contato ficam juntas, da mais recente para a mais antiga.
+  notas.forEach(n => { const c = contatoPorLead[n.leadId]; if (c) c.notas.push(n); });
+  contatos.forEach(c => { c.notas.sort((a, b) => b.t - a.t); resolverContato_(c, cfg); });
   memoEstado_ = { leads: leads, eventos: eventos, contatos: contatos };
   return memoEstado_;
 }
@@ -451,7 +564,7 @@ function resolverContato_(c, cfg) {
     ? Math.max(0, c.resposta.t - c.primeira.chegada) : null;
 }
 
-function paraCliente_(c, nomes) {
+function paraCliente_(c, nomes, eu) {
   const p = c.principal;
   return {
     id: p.id,
@@ -471,6 +584,7 @@ function paraCliente_(c, nomes) {
     ultima: c.ultima ? { t: c.ultima.t, por: nomes[c.ultima.autor] || c.ultima.autor } : null,
     anterior: c.anterior,
     voltou: c.voltou,
+    notas: c.notas.map(n => ({ id: n.id, t: n.t, editadaEm: n.editadaEm, por: nomes[n.autor] || n.autor, texto: n.texto, minha: n.autor === eu })),
   };
 }
 
@@ -587,7 +701,10 @@ function exportar_(tipo, p, cfg) {
     est.contatos.forEach(c => c.entradas.forEach(en => { contatoPorLead[en.id] = c; }));
     linhas = [['lead_id', 'chegada', 'empreendimento', 'campanha', 'conjunto', 'anuncio', 'formulario', 'nome', 'telefone', 'email',
       'respostas', 'contato', 'entrada_n', 'qualificado', 'situacao', 'primeira_resposta_em', 'primeira_resposta_por',
-      'tempo_resposta_min', 'ultima_atualizacao_em', 'ultima_atualizacao_por']];
+      'tempo_resposta_min', 'ultima_atualizacao_em', 'ultima_atualizacao_por', 'notas']];
+    // Notas só existem nesta exportação (tem dados pessoais). Valem para o contato todo.
+    const notasCsv = c => c.notas.map(n => data(n.t) + ' ' + (nomes[n.autor] || n.autor) + ': ' + n.texto +
+      (n.editadaEm ? ' (editada)' : '')).join(' | ');
     est.leads.filter(l => !l.teste).sort((a, b) => (a.chegada || 0) - (b.chegada || 0)).forEach(l => {
       const c = contatoPorLead[l.id];
       linhas.push([l.id, data(l.chegada), l.aba, l.campanha, l.conjunto, l.anuncio, l.formulario, l.nome,
@@ -595,7 +712,7 @@ function exportar_(tipo, p, cfg) {
         c.chave, c.entradas.indexOf(l) + 1, c.qualificado, c.situacao,
         c.resposta ? data(c.resposta.t) : '', c.resposta ? (nomes[c.resposta.autor] || c.resposta.autor) : '',
         c.tempoResposta !== null ? Math.round(c.tempoResposta / 60000) : '',
-        c.ultima ? data(c.ultima.t) : '', c.ultima ? (nomes[c.ultima.autor] || c.ultima.autor) : '']);
+        c.ultima ? data(c.ultima.t) : '', c.ultima ? (nomes[c.ultima.autor] || c.ultima.autor) : '', notasCsv(c)]);
     });
     arquivo = 'villa-verde-leads-completo-' + hoje + '.csv';
   } else if (tipo === 'historico') {
@@ -659,6 +776,23 @@ function planilhaApp_() {
 function abaRegistros_() {
   const aba = planilhaApp_().getSheetByName(ABA_REGISTROS);
   if (!aba) throw new Error('Aba "Registros" não encontrada. Rode a função instalar.');
+  return aba;
+}
+
+/** Aba Notas. Criada na primeira nota salva, para não exigir rodar instalar de novo. */
+function abaNotas_(criar) {
+  const ss = planilhaApp_();
+  let aba = ss.getSheetByName(ABA_NOTAS);
+  if (aba || !criar) return aba;
+  aba = ss.insertSheet(ABA_NOTAS);
+  aba.getRange(1, 1, 1, CABECALHO_NOTAS.length).setValues([CABECALHO_NOTAS]).setFontWeight('bold');
+  aba.getRange('B:B').setNumberFormat('dd/MM/yyyy HH:mm:ss');
+  aba.getRange('A:A').setNumberFormat('@');
+  aba.getRange('C:E').setNumberFormat('@'); // lead_id e texto como texto puro
+  aba.setFrozenRows(1);
+  aba.protect()
+    .setDescription('Notas gravadas pelo app. Podem ter dados pessoais. Não edite nem apague à mão.')
+    .setWarningOnly(true);
   return aba;
 }
 

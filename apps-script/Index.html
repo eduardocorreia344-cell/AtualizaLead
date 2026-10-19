@@ -299,6 +299,34 @@ main { padding-bottom: 110px; }
 .op.sel { color: var(--text); background: color-mix(in srgb, var(--cor) 16%, var(--surface)); border-color: color-mix(in srgb, var(--cor) 70%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cor) 14%, transparent); }
 .op.sel::after { content: ""; position: absolute; right: 12px; width: 16px; height: 16px; border-radius: 50%; background: var(--cor) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/11px no-repeat; }
 .op:active { transform: scale(.97); }
+
+/* ---------- notas do corretor ---------- */
+.nt-campo {
+  display: block; width: 100%; min-height: 52px; max-height: 50vh; resize: none; overflow-y: auto;
+  padding: 13px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line);
+  color: var(--text); font: 16px/1.45 Inter, system-ui, sans-serif; outline: none; /* 16px: iPhone não dá zoom */
+}
+.nt-campo:focus { border-color: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
+.nt-campo::placeholder { color: var(--muted); }
+.nt-dica { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--muted); margin: 7px 2px 10px; }
+.nt-dica .perto { color: var(--amber); font-weight: 600; }
+.btn.nt-salvar { width: 100%; background: linear-gradient(135deg, var(--blue-hi), var(--blue-lo)); box-shadow: 0 8px 22px var(--glow); }
+.btn.nt-salvar:disabled { opacity: .4; box-shadow: none; cursor: default; }
+.nt-lista { display: grid; gap: 8px; margin-top: 14px; }
+.nt-item { padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.nt-topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 12.5px; color: var(--muted); }
+.nt-topo b { color: var(--text); font-weight: 600; font-size: 13.5px; }
+.nt-texto { margin-top: 5px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nt-acoes { display: flex; gap: 8px; margin-top: 10px; }
+.nt-acoes button { height: 40px; padding: 0 14px; border-radius: 11px; font-weight: 600; font-size: 14px; background: var(--surface-3); color: var(--text); }
+.nt-acoes button.principal { background: linear-gradient(135deg, var(--blue), var(--blue-lo)); color: #fff; }
+.nt-acoes button:disabled { opacity: .5; }
+.nt-editar { margin-top: 8px; height: 36px; padding: 0 12px; border-radius: 10px; font-weight: 600; font-size: 13.5px; color: var(--blue); background: var(--blue-soft); }
+.nt-item .nt-campo { margin-top: 8px; }
+.c-nota { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 13px; color: var(--text-2); min-width: 0; }
+.c-nota svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
+.c-nota b { font-weight: 600; color: var(--muted); flex: none; }
+.c-nota span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .rodape { text-align: center; color: var(--muted); font-size: 13px; margin: 18px 0 40px; }
 
 /* ---------- painel ---------- */
@@ -445,6 +473,7 @@ const ICONES = {
   ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   seta: '<svg class="seta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   baixar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
+  nota: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
 };
 const CLASSE_SITUACAO = {
   'Novo': 's-novo', 'Em contato': 's-contato', 'Sem resposta': 's-semresp', 'Visita agendada': 's-visag',
@@ -460,6 +489,10 @@ const S = {
   dados: null, offset: 0, carregadoEm: 0, busca: '', aberto: null, tela: 'leads',
   secoesAbertas: { anteriores: false, encerrados: false },
   pendentes: {},       // id -> { campo: valor } ainda não confirmados pelo servidor
+  rascunhos: {},       // id do contato -> texto da nota ainda não salva
+  editando: null,      // { id, texto } da nota sendo corrigida
+  salvandoNota: false,
+  notasLocais: {},     // nota_id -> { cid, nota } salvas aqui e ainda não vistas numa carga
   filtroPainel: { dias: 30, emp: '' },
 };
 const APP_URL = document.body.dataset.url || '';
@@ -508,12 +541,14 @@ async function carregar(silencioso) {
     S.carregadoEm = Date.now();
     // reaplica toques que ainda não voltaram do servidor
     d.contatos.forEach(c => Object.assign(c, S.pendentes[c.id] || {}));
+    mesclarNotasLocais(d);
     S.dados = d;
     $('#eu').textContent = iniciais(d.usuario.nome);
     $('#eu').title = d.usuario.nome + ' · ' + d.usuario.email;
     preencherEmpreendimentos(d.empreendimentos);
     renderLeads();
-    if (S.aberto) renderLead();
+    // Não redesenha o lead enquanto o corretor digita uma nota: o teclado do celular fecharia.
+    if (S.aberto && !digitandoNota()) renderLead();
     if (leadInicial) {
       const c = d.contatos.find(x => x.ids.includes(leadInicial));
       leadInicial = '';
@@ -563,11 +598,15 @@ function cardHtml(c) {
   if (c.qualificado === 'Sim') tags.push('<span class="chip q-sim">Qualificado</span>');
   if (c.qualificado === 'Não') tags.push('<span class="chip q-nao">Não qualificado</span>');
   if (c.antes.length) tags.push('<span class="chip dup">' + (c.antes.length + 1) + 'ª entrada</span>');
+  const ultimaNota = c.notas && c.notas[0];
+  const linhaNota = ultimaNota
+    ? '<span class="c-nota">' + ICONES.nota + '<b>' + esc(data(ultimaNota.t)) + '</b><span>' + esc(ultimaNota.texto.replace(/\s+/g, ' ')) + '</span></span>'
+    : '';
   return '<button class="card' + (verm ? ' atrasado' : '') + '" data-id="' + esc(c.id) + '">' +
     '<span class="av ' + corAvatar(c.nome) + '">' + esc(iniciais(c.nome)) + '</span>' +
     '<span class="c-meio"><span class="c-nome">' + esc(c.nome) + '</span>' +
     '<span class="c-sub">' + esc(c.emp) + (c.anuncio ? ' · ' + esc(c.anuncio) : '') + '</span>' +
-    '<span class="c-tags">' + tags.join('') + '</span></span>' +
+    '<span class="c-tags">' + tags.join('') + '</span>' + linhaNota + '</span>' +
     '<span class="c-lado">' + tempo + '</span></button>';
 }
 
@@ -620,6 +659,7 @@ function abrirLead(id, empilhar) {
 }
 function fecharLead(empilhar) {
   S.aberto = null;
+  S.editando = null;
   $('#folha').hidden = true;
   document.body.style.overflow = '';
   renderLeads();
@@ -664,8 +704,119 @@ function renderLead() {
       '<section class="bloco"><h2>Situação</h2><div class="grade">' +
         S.dados.situacoes.map(s => '<button class="op ' + CLASSE_SITUACAO[s] + (c.situacao === s ? ' sel' : '') + '" data-campo="situacao" data-valor="' + esc(s) + '">' + esc(s) + '</button>').join('') +
       '</div></section>' +
+      notasHtml(c) +
       '<div class="rodape">' + (c.ultima ? 'Última atualização: ' + esc(c.ultima.por) + ' · ' + esc(ha(c.ultima.t)) : 'Ainda ninguém atualizou este lead') + '</div>' +
     '</div>';
+  document.querySelectorAll('#folha textarea').forEach(crescer);
+}
+
+/* ---------- notas do corretor ---------- */
+function notaEditavel(n) {
+  return n.minha && agora() - n.t < S.dados.minutosEditarNota * 60000;
+}
+
+function notasHtml(c) {
+  const max = S.dados.maxNota;
+  const rascunho = S.rascunhos[c.id] || '';
+  const itens = (c.notas || []).map(n => {
+    const quando = esc(dataHora(n.t)) + (n.editadaEm ? ' · editada' : '');
+    const topo = '<div class="nt-topo"><b>' + esc(n.por) + '</b><span>' + quando + '</span></div>';
+    if (S.editando && S.editando.id === n.id) {
+      return '<article class="nt-item">' + topo +
+        '<textarea class="nt-campo" data-edicao="' + esc(n.id) + '" maxlength="' + max + '" rows="2">' + esc(S.editando.texto) + '</textarea>' +
+        '<div class="nt-acoes"><button class="principal" data-salvar-edicao="' + esc(n.id) + '"' + (S.salvandoNota ? ' disabled' : '') + '>Salvar correção</button>' +
+        '<button data-cancelar-edicao>Cancelar</button></div></article>';
+    }
+    return '<article class="nt-item">' + topo + '<div class="nt-texto">' + esc(n.texto) + '</div>' +
+      (notaEditavel(n) ? '<button class="nt-editar" data-editar-nota="' + esc(n.id) + '">Editar</button>' : '') + '</article>';
+  }).join('');
+  return '<section class="bloco"><h2>Notas</h2>' +
+    '<textarea class="nt-campo" id="notaTexto" maxlength="' + max + '" rows="1" placeholder="Escreva uma observação sobre o lead">' + esc(rascunho) + '</textarea>' +
+    '<div class="nt-dica"><span>Opcional. Não substitui a Situação.</span><span id="notaConta">' + contadorNota(rascunho) + '</span></div>' +
+    '<button class="btn nt-salvar" id="btnNota"' + (!rascunho.trim() || S.salvandoNota ? ' disabled' : '') + '>' + (S.salvandoNota ? 'Salvando…' : 'Salvar nota') + '</button>' +
+    (itens ? '<div class="nt-lista">' + itens + '</div>' : '') +
+  '</section>';
+}
+
+function contadorNota(texto) {
+  const n = texto.length, max = S.dados.maxNota;
+  return n > max * 0.8 ? '<span class="perto">' + n + '/' + max + '</span>' : '';
+}
+
+function crescer(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 2 + 'px';
+}
+
+function digitandoNota() {
+  const a = document.activeElement;
+  return !!(a && a.tagName === 'TEXTAREA' && a.closest('#folha'));
+}
+
+function erroDe(e) {
+  const m = String(e && e.message || e || '');
+  return /vazia|caracteres|prazo|escreveu|não encontrada/.test(m) ? m.replace(/^Error:\s*/, '') : '';
+}
+
+/** Nota recém-salva entra no contato atual e em qualquer carga que ainda não a tenha. */
+function guardarNotaLocal(cid, nota) {
+  S.notasLocais[nota.id] = { cid: cid, nota: nota };
+  const c = contato(cid);
+  if (c) c.notas = [nota].concat((c.notas || []).filter(x => x.id !== nota.id)).sort((a, b) => b.t - a.t);
+}
+
+function mesclarNotasLocais(d) {
+  Object.keys(S.notasLocais).forEach(id => {
+    const { cid, nota } = S.notasLocais[id];
+    const c = d.contatos.find(x => x.id === cid || x.ids.includes(cid));
+    if (!c) return;
+    const doServidor = c.notas.find(x => x.id === id);
+    if (doServidor && (doServidor.editadaEm || 0) >= (nota.editadaEm || 0)) { delete S.notasLocais[id]; return; }
+    c.notas = [nota].concat(c.notas.filter(x => x.id !== id)).sort((a, b) => b.t - a.t);
+  });
+}
+
+async function salvarNota() {
+  const c = contato(S.aberto);
+  const texto = (S.rascunhos[S.aberto] || '').trim();
+  if (!c || !texto || S.salvandoNota) return;
+  const cid = c.id;
+  S.salvandoNota = true;
+  renderLead();
+  try {
+    const nota = await api('salvarNota', cid, texto);
+    delete S.rascunhos[cid];
+    guardarNotaLocal(cid, nota);
+    if (navigator.vibrate) navigator.vibrate(12);
+    toast('Nota salva');
+  } catch (e) {
+    toast(erroDe(e) || 'A nota não salvou. O texto continua aí, tente de novo.', true);
+  } finally {
+    S.salvandoNota = false;
+  }
+  if (S.aberto === cid) renderLead();
+  renderLeads();
+}
+
+async function salvarEdicao(id) {
+  if (!S.editando || S.editando.id !== id || S.salvandoNota) return;
+  const cid = S.aberto;
+  const texto = S.editando.texto.trim();
+  if (!texto) { toast('A nota está vazia.', true); return; }
+  S.salvandoNota = true;
+  renderLead();
+  try {
+    const nota = await api('editarNota', id, texto);
+    S.editando = null;
+    guardarNotaLocal(cid, nota);
+    toast('Nota corrigida');
+  } catch (e) {
+    toast(erroDe(e) || 'Não salvou a correção. Tente de novo.', true);
+  } finally {
+    S.salvandoNota = false;
+  }
+  if (S.aberto === cid) renderLead();
+  renderLeads();
 }
 
 async function mudar(campo, valor) {
@@ -799,6 +950,17 @@ document.addEventListener('click', e => {
   if (secao) { const k = secao.dataset.secao; S.secoesAbertas[k] = !S.secoesAbertas[k]; renderLeads(); return; }
   const op = e.target.closest('[data-campo]');
   if (op) { mudar(op.dataset.campo, op.dataset.valor); return; }
+  if (e.target.closest('#btnNota')) { salvarNota(); return; }
+  const ed = e.target.closest('[data-editar-nota]');
+  if (ed) {
+    const c = contato(S.aberto);
+    const n = c && c.notas.find(x => x.id === ed.dataset.editarNota);
+    if (n) { S.editando = { id: n.id, texto: n.texto }; renderLead(); const t = $('[data-edicao]'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+    return;
+  }
+  const se = e.target.closest('[data-salvar-edicao]');
+  if (se) { salvarEdicao(se.dataset.salvarEdicao); return; }
+  if (e.target.closest('[data-cancelar-edicao]')) { S.editando = null; renderLead(); return; }
   if (e.target.closest('#btnVoltar')) { fecharLead(true); return; }
   const dias = e.target.closest('[data-dias]');
   if (dias) {
@@ -809,6 +971,18 @@ document.addEventListener('click', e => {
 });
 $('#filtroEmp').addEventListener('change', e => { S.filtroPainel.emp = e.target.value; carregarPainel(); });
 $('#busca').addEventListener('input', e => { S.busca = e.target.value; renderLeads(); });
+$('#folha').addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'notaTexto') {
+    S.rascunhos[S.aberto] = t.value;
+    $('#btnNota').disabled = !t.value.trim() || S.salvandoNota;
+    $('#notaConta').innerHTML = contadorNota(t.value);
+    crescer(t);
+  } else if (t.dataset.edicao && S.editando) {
+    S.editando.texto = t.value;
+    crescer(t);
+  }
+});
 $('#navLeads').addEventListener('click', () => irPara('leads'));
 $('#navPainel').addEventListener('click', () => irPara('painel'));
 $('#btnAtualizar').addEventListener('click', () => { carregar(); if (S.tela === 'painel') carregarPainel(); });

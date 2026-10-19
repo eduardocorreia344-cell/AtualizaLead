@@ -4,7 +4,8 @@ App de celular para os corretores (Sandro e Luana) atualizarem os leads da Meta 
 
 - **Lê** a "Planilha Villa Verde Oficial", todas as abas atuais e futuras, **sem nunca escrever nela**.
 - Cada toque do corretor vira uma linha nova na aba `Registros` de uma planilha separada. Cada linha guarda data/hora, lead_id, quem mudou, o valor anterior e o novo.
-- O corretor registra só **Qualificado** (Sim / Não / Ainda não sei) e **Situação** (8 opções).
+- O corretor registra só **Qualificado** (Sim / Não / Ainda não sei) e **Situação** (8 opções). Só esses dois contam no painel.
+- Opcionalmente, o corretor escreve **notas** no lead. Elas vão para a aba `Notas` e servem de contexto, não entram no painel.
 - O sistema calcula sozinho o tempo de resposta, os duplicados (por telefone e por lead_id) e o painel do gestor.
 - Um e-mail avisa os dois corretores a cada lead novo, com um botão que abre o lead direto.
 - O gestor (gabrielgoto2@gmail.com) instala, é dono do app e acompanha pelo painel.
@@ -14,6 +15,7 @@ apps-script/Code.gs          servidor (Apps Script)
 apps-script/Index.html       tela do app (lista, lead, painel)
 apps-script/appsscript.json  permissões e modo de publicação
 test/                        testes locais com dados falsos (node --test test/code.test.js)
+                             prints de celular: node test/screenshots.js <pasta>
 ```
 
 ---
@@ -69,7 +71,8 @@ Na Config, troque **Avisar por e-mail** para `NÃO`.
 2. Quando chegar o e-mail de lead novo, toque em **Abrir** e use os botões **Ligar** ou **WhatsApp**.
 3. Depois de cada contato, toque na **Situação** (Em contato, Sem resposta, Visita agendada…). Salva sozinho.
 4. Quando tiver certeza, marque **Qualificado: Sim ou Não**. Até lá, deixe em "Ainda não sei".
-5. No topo da lista ficam os leads que pedem ação. Vermelho quer dizer mais de 2 h sem resposta.
+5. Se quiser lembrar de algo, escreva em **Notas** e toque em **Salvar nota**. É opcional e não substitui a Situação. Errou a digitação? Você tem 10 minutos para tocar em **Editar** na sua nota.
+6. No topo da lista ficam os leads que pedem ação. Vermelho quer dizer mais de 2 h sem resposta.
 
 ---
 
@@ -85,10 +88,12 @@ Na Config, troque **Avisar por e-mail** para `NÃO`.
 | Duplicados | A chave do telefone é o DDD mais os últimos 8 dígitos, para casar o mesmo número com e sem o nono dígito. O mesmo telefone ou o mesmo lead_id formam um só contato, e nada é apagado. |
 | Tempo de resposta | Vai da primeira chegada do contato até o primeiro toque que tira o lead de "Novo", em horas corridas. Conta para quem deu esse toque. Leads anteriores ao "Início do sistema" ficam fora da média. |
 | Painel | Cada contato conta uma vez, no anúncio que o trouxe primeiro. "Entradas" conta todos os envios do formulário. |
-| Exportar | Há três CSVs (separados por `;`, com BOM, abrem direto no Excel): **Resumo** só com contagens, **Base completa** com lead_id para o CRM e **Histórico**. |
-| LGPD | O app abre com login Google e uma lista de acesso na Config. O e-mail de aviso leva só o primeiro nome, o empreendimento e o anúncio. O e-mail do lead não aparece na tela, só no CSV completo. |
+| Notas | Ficam na aba `Notas` (nota_id, data_hora, lead_id, autor, texto), criada sozinha na primeira nota. Cada nota é uma linha nova. Só o autor corrige, até 10 minutos depois de criar, e a correção é outra linha com o mesmo nota_id: a versão anterior fica na aba. Notas de todas as entradas do mesmo contato aparecem juntas. Não entram no painel nem em `Registros`. |
+| Exportar | Há três CSVs (separados por `;`, com BOM, abrem direto no Excel): **Resumo** só com contagens, **Base completa** com lead_id para o CRM (inclui as notas do contato) e **Histórico** (sem notas). |
+| LGPD | O app abre com login Google e uma lista de acesso na Config. O e-mail de aviso leva só o primeiro nome, o empreendimento e o anúncio. O e-mail do lead não aparece na tela, só no CSV completo. As notas podem ter dados sensíveis (renda, família): ficam fora do Resumo e do Histórico. |
 
 ### Limites conhecidos
+- A regra "ninguém apaga nota de outra pessoa" vale **dentro do app**. Como o app grava em nome de quem abre, os corretores são Editores da planilha e conseguiriam apagar linhas direto no Sheets. A aba `Notas`, como a `Registros`, tem proteção de aviso: o Sheets alerta antes de qualquer edição à mão, mas não impede.
 - Gmail comum envia até cerca de 100 destinatários por dia. Cada aviso vai para 2 pessoas, ou seja, uns 50 leads por dia. Quando chegam mais de 5 leads de uma vez, sai um e-mail-resumo.
 - Cada abertura do app lê todas as abas. Isso fica rápido até alguns milhares de leads, o que basta para uma ponte até o CRM.
 - O aviso por e-mail roda a cada 5 minutos.

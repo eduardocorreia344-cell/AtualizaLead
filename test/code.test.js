@@ -196,6 +196,95 @@ test('exportações: resumo sem dados pessoais, completo com lead_id', () => {
   assert.match(hist.conteudo, /Sandro;situacao;Novo;Visita agendada/);
 });
 
+test('notas: aba própria, duplicados juntos, mais recente primeiro, painel intocado', () => {
+  const { como, f } = preparar();
+  como(SANDRO, 'salvar', 'l:1000000000000002', 'situacao', 'Em contato', 'Novo');
+  const painelAntes = JSON.stringify(como(DONO, 'painel', { dias: 0 }));
+  const registrosAntes = JSON.stringify(f.app.getSheetByName('Registros').values);
+  const leadsAntes = JSON.stringify(f.leads.getSheets().map(s => s.values));
+  assert.strictEqual(f.app.getSheetByName('Notas'), null, 'aba só nasce na primeira nota');
+
+  // Bruno tem duas entradas: Nest (l:1…2) e Cedro (l:2…1). Uma nota em cada.
+  const n1 = como(SANDRO, 'salvarNota', 'l:1000000000000002', 'Prefere falar depois das 18h');
+  const notas = f.app.getSheetByName('Notas');
+  notas.values[1][1] = new Date(Date.now() - 5 * 60000); // nota do Sandro foi há 5 min
+  const n2 = como(LUANA, 'salvarNota', 'l:2000000000000001', 'Vai visitar com a esposa');
+  assert.strictEqual(n1.por, 'Sandro');
+  assert.match(n2.id, /^n:/);
+
+  igual(notas.values[0], ['nota_id', 'data_hora', 'lead_id', 'autor', 'texto']);
+  igual(notas.values[2].slice(2), ['l:2000000000000001', LUANA, 'Vai visitar com a esposa']);
+  assert.ok(notas.protegida);
+
+  const d = como(SANDRO, 'carregar');
+  const bruno = d.contatos.find(c => c.nome === 'Bruno E.');
+  igual(bruno.notas.map(n => [n.por, n.texto, n.minha]), [
+    ['Luana', 'Vai visitar com a esposa', false],
+    ['Sandro', 'Prefere falar depois das 18h', true],
+  ]);
+  assert.ok(d.contatos.filter(c => c.nome !== 'Bruno E.').every(c => c.notas.length === 0));
+  assert.ok(!/@exemplo/.test(JSON.stringify(d.contatos)), 'e-mail (de lead ou de corretor) não vai para a tela');
+  assert.strictEqual(d.minutosEditarNota, 10);
+
+  assert.strictEqual(JSON.stringify(como(DONO, 'painel', { dias: 0 })), painelAntes, 'nota mudou o painel');
+  assert.strictEqual(JSON.stringify(f.app.getSheetByName('Registros').values), registrosAntes, 'nota mexeu em Registros');
+  assert.strictEqual(JSON.stringify(f.leads.getSheets().map(s => s.values)), leadsAntes, 'nota mexeu na planilha de leads');
+});
+
+test('notas: só o autor corrige, até 10 minutos, sem apagar a versão anterior', () => {
+  const { como, f } = preparar();
+  const n = como(SANDRO, 'salvarNota', 'l:1000000000000001', 'Liga dpeois das 18h');
+  assert.throws(() => como(LUANA, 'editarNota', n.id, 'outra coisa'), /Só quem escreveu/);
+
+  const e = como(SANDRO, 'editarNota', n.id, 'Ligar depois das 18h');
+  assert.ok(e.editadaEm);
+  assert.strictEqual(e.t, n.t, 'a data da nota continua a da criação');
+  const notas = f.app.getSheetByName('Notas');
+  assert.strictEqual(notas.values.length, 3, 'correção é linha nova');
+  assert.strictEqual(notas.values[1][4], 'Liga dpeois das 18h', 'versão anterior preservada');
+
+  // Linha forjada à mão por outra pessoa com o mesmo nota_id é ignorada.
+  notas.appendRow([n.id, new Date(Date.now() + 1000), 'l:1000000000000001', LUANA, 'texto trocado']);
+  const ana = como(LUANA, 'carregar').contatos.find(c => c.nome === 'Ana Teste');
+  assert.strictEqual(ana.notas.length, 1);
+  assert.strictEqual(ana.notas[0].texto, 'Ligar depois das 18h');
+  assert.ok(ana.notas[0].editadaEm);
+  assert.strictEqual(ana.notas[0].minha, false, 'para a Luana, a nota não é dela');
+
+  notas.values[1][1] = new Date(Date.now() - 11 * 60000); // criada há 11 min
+  assert.throws(() => como(SANDRO, 'editarNota', n.id, 'tarde demais'), /prazo de 10 minutos/);
+});
+
+test('notas: validação e texto que parece fórmula', () => {
+  const { como, f } = preparar();
+  assert.throws(() => como(SANDRO, 'salvarNota', 'l:1000000000000001', '   '), /vazia/);
+  assert.throws(() => como(SANDRO, 'salvarNota', 'l:1000000000000001', 'x'.repeat(501)), /500 caracteres/);
+  assert.throws(() => como(SANDRO, 'salvarNota', '=HYPERLINK("x")', 'oi'), /Lead inválido/);
+  assert.throws(() => como('intruso@exemplo.com', 'salvarNota', 'l:1000000000000001', 'oi'), /não autorizado/);
+  assert.throws(() => como(SANDRO, 'editarNota', 'qualquer', 'oi'), /Nota inválida/);
+  assert.throws(() => como(SANDRO, 'editarNota', 'n:naoexiste', 'oi'), /não encontrada/);
+
+  como(SANDRO, 'salvarNota', 'l:1000000000000001', '=HYPERLINK("http://x")');
+  como(SANDRO, 'salvarNota', 'l:1000000000000001', '- ligou, sem resposta\nTentar amanhã');
+  const gravados = f.app.getSheetByName('Notas').values.slice(1).map(r => r[4]);
+  assert.ok(gravados.every(t => !/^[=+\-@]/.test(t)), 'nada gravado pode virar fórmula');
+  const ana = como(SANDRO, 'carregar').contatos.find(c => c.nome === 'Ana Teste');
+  igual(ana.notas.map(n => n.texto).sort(), ['- ligou, sem resposta\nTentar amanhã', '=HYPERLINK("http://x")']);
+});
+
+test('exportações: notas só na base completa', () => {
+  const { como } = preparar();
+  como(SANDRO, 'salvarNota', 'l:1000000000000001', 'Renda 20 mil; mora com a mãe');
+  const resumo = como(SANDRO, 'doGet', { parameter: { exportar: 'resumo', dias: '0' } }).conteudo;
+  const hist = como(SANDRO, 'doGet', { parameter: { exportar: 'historico' } }).conteudo;
+  assert.ok(!/Renda 20|mora com/.test(resumo + hist), 'nota vazou em exportação sem dados pessoais');
+
+  const linhas = como(SANDRO, 'doGet', { parameter: { exportar: 'completo' } }).conteudo.replace(/^﻿/, '').split('\r\n');
+  assert.ok(linhas[0].endsWith(';notas'));
+  const ana = linhas.find(l => l.startsWith('l:1000000000000001;'));
+  assert.match(ana, /Sandro: Renda 20 mil; mora com a mãe"$/, 'nota com ; vai entre aspas');
+});
+
 test('campoCsv_ neutraliza fórmulas e escapa separadores', () => {
   const { amb } = preparar();
   assert.strictEqual(amb.interno('campoCsv_("=1+1")'), "'=1+1");
